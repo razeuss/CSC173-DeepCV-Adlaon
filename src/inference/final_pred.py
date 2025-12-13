@@ -42,7 +42,7 @@ except enchant.errors.DictNotFoundError:
 class Application:
     def __init__(self):
         # Camera (index 1 from your tests)
-        self.vs = cv2.VideoCapture(1, cv2.CAP_AVFOUNDATION)
+        self.vs = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
         self.current_image = None
 
         # Load model
@@ -75,7 +75,6 @@ class Application:
         self.root.minsize(1200, 700)
 
         # Configure 4x4 grid
-        # NOTE: you can manually tweak these weights
         self.root.grid_columnconfigure(0, weight=2)  # camera
         self.root.grid_columnconfigure(1, weight=2)  # camera
         self.root.grid_columnconfigure(2, weight=2)  # ASL guide
@@ -112,7 +111,7 @@ class Application:
 
         self.signs_pil = None
         self.signs_imgtk = None
-        signs_path = os.path.join(BASE_DIR, "..", "..", "assets", "signs.png")
+        signs_path = os.path.join(BASE_DIR, "..", "..", "assets", "asl.jpg")
         if os.path.exists(signs_path):
             self.signs_pil = Image.open(signs_path).convert("RGBA")
 
@@ -173,8 +172,25 @@ class Application:
         self.clear.config(text="Clear", font=("Times New Roman", 18),
                           wraplength=100, command=self.clear_fun)
 
-        # Remove / hide panel2 completely (white skeleton UI)
-        self.panel2 = None
+        # --- NEW: Separate window for WHITE skeleton display ---
+        self.white_win = tk.Toplevel(self.root)
+        self.white_win.title("Skeleton (White Background)")
+        self.white_win.geometry("420x460")
+        self.white_win.minsize(380, 420)
+
+        # Close just this window without closing the app
+        def _close_white():
+            try:
+                self.white_win.withdraw()  # hide window
+            except Exception:
+                pass
+
+        self.white_win.protocol("WM_DELETE_WINDOW", _close_white)
+
+        self.panel2 = tk.Label(self.white_win)
+        self.panel2.pack(fill="both", expand=True, padx=10, pady=10)
+        self.panel2_imgtk = None
+        # --------------------------------------------------------
 
         # state
         self.str = " "
@@ -363,6 +379,25 @@ class Application:
                     # Predict from WHITE (unchanged behavior)
                     res = white
                     self.predict(res)
+
+                    # --- NEW: Show WHITE skeleton in the separate window ---
+                    try:
+                        if hasattr(self, "white_win") and self.white_win.winfo_exists():
+                            # Convert BGR -> RGB for Tkinter display
+                            white_rgb = cv2.cvtColor(white, cv2.COLOR_BGR2RGB)
+                            white_pil = Image.fromarray(white_rgb)
+
+                            # Resize to fit panel2
+                            w2 = self.panel2.winfo_width()
+                            h2 = self.panel2.winfo_height()
+                            if w2 > 50 and h2 > 50:
+                                white_pil = white_pil.resize((w2, h2), Image.LANCZOS)
+
+                            self.panel2_imgtk = ImageTk.PhotoImage(white_pil)
+                            self.panel2.config(image=self.panel2_imgtk)
+                    except Exception:
+                        pass
+                    # ------------------------------------------------------
 
                     # Overlay skeleton ON CAMERA (sticks to your hand)
                     self._draw_skeleton_on_frame(cv2image_copy, self.pts, (x1, y1))
@@ -794,6 +829,13 @@ class Application:
     def destructor(self):
         print("Closing Application...")
         print(self.ten_prev_char)
+
+        try:
+            if hasattr(self, "white_win") and self.white_win.winfo_exists():
+                self.white_win.destroy()
+        except Exception:
+            pass
+
         self.root.destroy()
         self.vs.release()
         cv2.destroyAllWindows()
