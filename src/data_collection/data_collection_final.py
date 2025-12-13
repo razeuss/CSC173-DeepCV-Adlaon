@@ -20,7 +20,7 @@ c_dir = 'A'
 
 # Base paths (relative to this script)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SAVE_BASE_DIR = os.path.join(BASE_DIR, "AtoZ_3.2")
+SAVE_BASE_DIR = os.path.join(BASE_DIR, "data/raw/AtoZ_3.2")
 
 # Ensure base save dir exists
 os.makedirs(SAVE_BASE_DIR, exist_ok=True)

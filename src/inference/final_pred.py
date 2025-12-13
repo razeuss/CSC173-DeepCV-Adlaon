@@ -4,7 +4,6 @@ import math
 import cv2
 import os
 import traceback
-import pyttsx3
 from tensorflow.keras.models import load_model
 from cvzone.HandTrackingModule import HandDetector
 from string import ascii_uppercase
@@ -17,10 +16,11 @@ offset = 29
 
 # Base dir
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-WHITE_PATH = os.path.join(BASE_DIR, "white.jpg")
+WHITE_PATH = os.path.join(BASE_DIR, "..", "..", "assets", "white.jpg")
 
 # Ensure white.jpg exists
 if not os.path.exists(WHITE_PATH):
+    os.makedirs(os.path.dirname(WHITE_PATH), exist_ok=True)
     white_img = np.ones((400, 400, 3), np.uint8) * 255
     cv2.imwrite(WHITE_PATH, white_img)
 
@@ -32,7 +32,6 @@ hd2 = HandDetector(maxHands=1)
 try:
     ddd = enchant.Dict("en_US")
 except enchant.errors.DictNotFoundError:
-    # Fallback to default language if en_US is not available
     dicts = enchant.list_dicts()
     if dicts:
         ddd = enchant.Dict(dicts[0][0])
@@ -47,15 +46,8 @@ class Application:
         self.current_image = None
 
         # Load model
-        model_path = os.path.join(BASE_DIR, "cnn8grps_rad1_model.h5")
+        model_path = os.path.join(BASE_DIR, "..", "..", "models", "cnn8grps_rad1_model.h5")
         self.model = load_model(model_path)
-
-        # TTS
-        self.speak_engine = pyttsx3.init()
-        self.speak_engine.setProperty("rate", 100)
-        voices = self.speak_engine.getProperty("voices")
-        if voices:
-            self.speak_engine.setProperty("voice", voices[0].id)
 
         self.ct = {'blank': 0}
         self.blank_flag = 0
@@ -70,74 +62,121 @@ class Application:
 
         print("Loaded model from disk")
 
-        # Tkinter GUI
+        # -----------------------------
+        # UI SETTINGS (4x4 grid idea)
+        # Camera feed: row 0-2 col 0-1
+        # ASL guide:   row 0-2 col 2-3
+        # Bottom UI:   row 3 col 0-3
+        # -----------------------------
         self.root = tk.Tk()
         self.root.title("Sign Language To Text Conversion")
         self.root.protocol('WM_DELETE_WINDOW', self.destructor)
         self.root.geometry("1300x750")
+        self.root.minsize(1200, 700)
 
-        self.panel = tk.Label(self.root)
-        self.panel.place(x=40, y=3, width=480, height=640)
+        # Configure 4x4 grid
+        # NOTE: you can manually tweak these weights
+        self.root.grid_columnconfigure(0, weight=2)  # camera
+        self.root.grid_columnconfigure(1, weight=2)  # camera
+        self.root.grid_columnconfigure(2, weight=2)  # ASL guide
+        self.root.grid_columnconfigure(3, weight=2)  # ASL guide
 
-        self.panel2 = tk.Label(self.root)  # cropped / processed image
-        self.panel2.place(x=550, y=115, width=400, height=400)
+        for r in range(4):
+            self.root.grid_rowconfigure(r, weight=2, uniform="row")
 
+        # Title (overlay)
         self.T = tk.Label(self.root)
-        self.T.place(x=60, y=5)
+        self.T.place(x=40, y=8)
         self.T.config(text="Sign Language To Text Conversion",
-                      font=("Times New Roman", 30, "bold"))
+                      font=("Times New Roman", 26, "bold"))
 
-        # Signs image
-        signs_path = os.path.join(BASE_DIR, "signs.png")
+        # ---- Left: Camera frame (row 0-2, col 0-1)
+        cam_frame = tk.Frame(self.root, bd=2, relief="groove")
+        cam_frame.grid(row=0, column=0, rowspan=3, columnspan=2, sticky="nsew",
+                       padx=12, pady=(55, 12))
+        cam_frame.grid_rowconfigure(0, weight=1)
+        cam_frame.grid_columnconfigure(0, weight=1)
+
+        self.panel = tk.Label(cam_frame)
+        self.panel.grid(row=0, column=0, sticky="nsew")
+
+        # ---- Right: ASL guide frame (row 0-2, col 2-3)
+        guide_frame = tk.Frame(self.root, bd=2, relief="groove", bg="#111111")
+        guide_frame.grid(row=0, column=2, rowspan=3, columnspan=2, sticky="nsew",
+                         padx=12, pady=(55, 12))
+        guide_frame.grid_rowconfigure(0, weight=1)
+        guide_frame.grid_columnconfigure(0, weight=1)
+
+        self.signs_label = tk.Label(guide_frame, bg="#111111")
+        self.signs_label.grid(row=0, column=0, sticky="nsew")
+
+        self.signs_pil = None
+        self.signs_imgtk = None
+        signs_path = os.path.join(BASE_DIR, "..", "..", "assets", "signs.png")
         if os.path.exists(signs_path):
-            image1 = Image.open(signs_path)
-            image1 = image1.resize((500, 400), Image.LANCZOS)
-            test = ImageTk.PhotoImage(image1)
-            label1 = tk.Label(image=test)
-            label1.image = test
-            label1.place(x=1000, y=110)
+            self.signs_pil = Image.open(signs_path).convert("RGBA")
 
-        self.panel3 = tk.Label(self.root)  # Current Symbol
-        self.panel3.place(x=280, y=585)
+        # ---- Bottom: info / predictions / suggestions (row 3, col 0-3)
+        bottom = tk.Frame(self.root, bd=2, relief="groove")
+        bottom.grid(row=3, column=0, columnspan=4, sticky="nsew",
+                    padx=12, pady=(0, 12))
 
-        self.T1 = tk.Label(self.root)
-        self.T1.place(x=10, y=580)
-        self.T1.config(text="Character :", font=("Times New Roman", 30, "bold"))
+        # bottom layout: 3 columns (info | suggestions | actions)
+        bottom.grid_columnconfigure(0, weight=2)
+        bottom.grid_columnconfigure(1, weight=3)
+        bottom.grid_columnconfigure(2, weight=1)
+        bottom.grid_rowconfigure(0, weight=1)
 
-        self.panel5 = tk.Label(self.root)  # Sentence
-        self.panel5.place(x=260, y=632)
+        info = tk.Frame(bottom)
+        info.grid(row=0, column=0, sticky="nsew", padx=12, pady=12)
+        info.grid_columnconfigure(1, weight=1)
 
-        self.T3 = tk.Label(self.root)
-        self.T3.place(x=10, y=632)
-        self.T3.config(text="Sentence :", font=("Times New Roman", 30, "bold"))
+        self.T1 = tk.Label(info, text="Character :", font=("Times New Roman", 22, "bold"))
+        self.T1.grid(row=0, column=0, sticky="w", pady=(0, 6))
 
-        self.T4 = tk.Label(self.root)
-        self.T4.place(x=10, y=680)
-        self.T4.config(text="Suggestions :", fg="red",
-                       font=("Times New Roman", 30, "bold"))
+        self.panel3 = tk.Label(info, text=" ", font=("Times New Roman", 22, "bold"))
+        self.panel3.grid(row=0, column=1, sticky="w", pady=(0, 6))
 
-        self.b1 = tk.Button(self.root)
-        self.b1.place(x=390, y=680)
+        self.T3 = tk.Label(info, text="Sentence :", font=("Times New Roman", 22, "bold"))
+        self.T3.grid(row=1, column=0, sticky="nw")
 
-        self.b2 = tk.Button(self.root)
-        self.b2.place(x=590, y=680)
+        self.panel5 = tk.Label(info, text=" ", font=("Times New Roman", 18),
+                               wraplength=520, justify="left")
+        self.panel5.grid(row=1, column=1, sticky="w")
 
-        self.b3 = tk.Button(self.root)
-        self.b3.place(x=790, y=680)
+        sug = tk.Frame(bottom)
+        sug.grid(row=0, column=1, sticky="nsew", padx=12, pady=12)
+        for i in range(4):
+            sug.grid_columnconfigure(i, weight=1)
 
-        self.b4 = tk.Button(self.root)
-        self.b4.place(x=990, y=680)
+        self.T4 = tk.Label(sug, text="Suggestions :", fg="red",
+                           font=("Times New Roman", 22, "bold"))
+        self.T4.grid(row=0, column=0, columnspan=4, sticky="w", pady=(0, 8))
 
-        self.speak = tk.Button(self.root)
-        self.speak.place(x=1150, y=630)
-        self.speak.config(text="Speak", font=("Times New Roman", 20),
-                          wraplength=100, command=self.speak_fun)
+        self.b1 = tk.Button(sug)
+        self.b1.grid(row=1, column=0, sticky="ew", padx=(0, 8))
 
-        self.clear = tk.Button(self.root)
-        self.clear.place(x=1040, y=630)
-        self.clear.config(text="Clear", font=("Times New Roman", 20),
+        self.b2 = tk.Button(sug)
+        self.b2.grid(row=1, column=1, sticky="ew", padx=(0, 8))
+
+        self.b3 = tk.Button(sug)
+        self.b3.grid(row=1, column=2, sticky="ew", padx=(0, 8))
+
+        self.b4 = tk.Button(sug)
+        self.b4.grid(row=1, column=3, sticky="ew")
+
+        actions = tk.Frame(bottom)
+        actions.grid(row=0, column=2, sticky="nsew", padx=12, pady=12)
+
+        self.clear = tk.Button(actions)
+        self.clear.pack(fill="x", pady=(30, 0))
+        self.clear.config(text="Clear", font=("Times New Roman", 18),
                           wraplength=100, command=self.clear_fun)
 
+        # Remove / hide panel2 completely (white skeleton UI)
+        self.panel2 = None
+
+        # state
         self.str = " "
         self.ccc = 0
         self.word = " "
@@ -149,7 +188,88 @@ class Application:
         self.word3 = " "
         self.word4 = " "
 
+        # Update ASL guide once now and also on window resize
+        self.root.bind("<Configure>", self._on_resize)
+        self.root.after(300, self._refresh_guide)
+
         self.video_loop()
+
+    # --------- NEW: crop camera to centered square ----------
+    def _center_crop_square(self, img_bgr):
+        h, w = img_bgr.shape[:2]
+        side = min(h, w)
+        cx, cy = w // 2, h // 2
+        x1 = max(cx - side // 2, 0)
+        y1 = max(cy - side // 2, 0)
+        return img_bgr[y1:y1 + side, x1:x1 + side]
+    # --------------------------------------------------------
+
+    def _on_resize(self, event=None):
+        self._refresh_guide()
+
+    def _refresh_guide(self):
+        try:
+            if self.signs_pil is None:
+                self.signs_label.config(
+                    text="ASL Guide not found.\nCheck: assets/signs.png",
+                    fg="white",
+                    bg="#111111",
+                    font=("Times New Roman", 18, "bold"),
+                    justify="center"
+                )
+                return
+
+            w = self.signs_label.winfo_width()
+            h = self.signs_label.winfo_height()
+
+            if w < 50 or h < 50:
+                self.root.after(100, self._refresh_guide)
+                return
+
+            img = self.signs_pil.copy()
+
+            # contain inside panel (prevents cut off)
+            img.thumbnail((w - 20, h - 20), Image.LANCZOS)
+
+            self.signs_imgtk = ImageTk.PhotoImage(img)
+            self.signs_label.config(image=self.signs_imgtk, text="", bg="#111111")
+
+        except Exception:
+            pass
+
+    def _draw_skeleton_on_frame(self, frame_bgr, pts_roi, roi_origin_xy):
+        """
+        Draw skeleton overlay on the CAMERA frame.
+        pts_roi: landmarks in ROI coordinates (handz from cropped image)
+        roi_origin_xy: (x1, y1) top-left in original frame where ROI starts
+        """
+        x1, y1 = roi_origin_xy
+
+        def P(i):
+            return (pts_roi[i][0] + x1, pts_roi[i][1] + y1)
+
+        # Fingers
+        for t in range(0, 4):
+            cv2.line(frame_bgr, P(t), P(t + 1), (0, 255, 0), 3)
+        for t in range(5, 8):
+            cv2.line(frame_bgr, P(t), P(t + 1), (0, 255, 0), 3)
+        for t in range(9, 12):
+            cv2.line(frame_bgr, P(t), P(t + 1), (0, 255, 0), 3)
+        for t in range(13, 16):
+            cv2.line(frame_bgr, P(t), P(t + 1), (0, 255, 0), 3)
+        for t in range(17, 20):
+            cv2.line(frame_bgr, P(t), P(t + 1), (0, 255, 0), 3)
+
+        # Palm connections
+        cv2.line(frame_bgr, P(5), P(9), (0, 255, 0), 3)
+        cv2.line(frame_bgr, P(9), P(13), (0, 255, 0), 3)
+        cv2.line(frame_bgr, P(13), P(17), (0, 255, 0), 3)
+        cv2.line(frame_bgr, P(0), P(5), (0, 255, 0), 3)
+        cv2.line(frame_bgr, P(0), P(17), (0, 255, 0), 3)
+
+        # Joints
+        for i in range(21):
+            cv2.circle(frame_bgr, P(i), 3, (0, 0, 255), -1)
 
     def video_loop(self):
         try:
@@ -161,12 +281,7 @@ class Application:
 
             cv2image = cv2.flip(frame, 1)
             hands = hd.findHands(cv2image, draw=False, flipType=True)
-            cv2image_copy = np.array(cv2image)
-            cv2image_rgb = cv2.cvtColor(cv2image, cv2.COLOR_BGR2RGB)
-            self.current_image = Image.fromarray(cv2image_rgb)
-            imgtk = ImageTk.PhotoImage(image=self.current_image)
-            self.panel.imgtk = imgtk
-            self.panel.config(image=imgtk)
+            cv2image_copy = np.array(cv2image)  # for drawing overlay
 
             if hands:
                 hand = hands[0]
@@ -182,6 +297,7 @@ class Application:
                 white = cv2.imread(WHITE_PATH)
                 handz = hd2.findHands(image, draw=False, flipType=True)
                 self.ccc += 1
+
                 if handz:
                     hand2 = handz[0]
                     self.pts = hand2['lmList']
@@ -189,7 +305,7 @@ class Application:
                     os_shift = ((400 - w) // 2) - 15
                     os1_shift = ((400 - h) // 2) - 15
 
-                    # Draw bones
+                    # Draw bones on WHITE (model input)
                     for t in range(0, 4):
                         cv2.line(
                             white,
@@ -226,36 +342,16 @@ class Application:
                             (0, 255, 0), 3
                         )
 
-                    cv2.line(
-                        white,
-                        (self.pts[5][0] + os_shift, self.pts[5][1] + os1_shift),
-                        (self.pts[9][0] + os_shift, self.pts[9][1] + os1_shift),
-                        (0, 255, 0), 3
-                    )
-                    cv2.line(
-                        white,
-                        (self.pts[9][0] + os_shift, self.pts[9][1] + os1_shift),
-                        (self.pts[13][0] + os_shift, self.pts[13][1] + os1_shift),
-                        (0, 255, 0), 3
-                    )
-                    cv2.line(
-                        white,
-                        (self.pts[13][0] + os_shift, self.pts[13][1] + os1_shift),
-                        (self.pts[17][0] + os_shift, self.pts[17][1] + os1_shift),
-                        (0, 255, 0), 3
-                    )
-                    cv2.line(
-                        white,
-                        (self.pts[0][0] + os_shift, self.pts[0][1] + os1_shift),
-                        (self.pts[5][0] + os_shift, self.pts[5][1] + os1_shift),
-                        (0, 255, 0), 3
-                    )
-                    cv2.line(
-                        white,
-                        (self.pts[0][0] + os_shift, self.pts[0][1] + os1_shift),
-                        (self.pts[17][0] + os_shift, self.pts[17][1] + os1_shift),
-                        (0, 255, 0), 3
-                    )
+                    cv2.line(white, (self.pts[5][0] + os_shift, self.pts[5][1] + os1_shift),
+                             (self.pts[9][0] + os_shift, self.pts[9][1] + os1_shift), (0, 255, 0), 3)
+                    cv2.line(white, (self.pts[9][0] + os_shift, self.pts[9][1] + os1_shift),
+                             (self.pts[13][0] + os_shift, self.pts[13][1] + os1_shift), (0, 255, 0), 3)
+                    cv2.line(white, (self.pts[13][0] + os_shift, self.pts[13][1] + os1_shift),
+                             (self.pts[17][0] + os_shift, self.pts[17][1] + os1_shift), (0, 255, 0), 3)
+                    cv2.line(white, (self.pts[0][0] + os_shift, self.pts[0][1] + os1_shift),
+                             (self.pts[5][0] + os_shift, self.pts[5][1] + os1_shift), (0, 255, 0), 3)
+                    cv2.line(white, (self.pts[0][0] + os_shift, self.pts[0][1] + os1_shift),
+                             (self.pts[17][0] + os_shift, self.pts[17][1] + os1_shift), (0, 255, 0), 3)
 
                     for i in range(21):
                         cv2.circle(
@@ -264,29 +360,36 @@ class Application:
                             2, (0, 0, 255), 1
                         )
 
+                    # Predict from WHITE (unchanged behavior)
                     res = white
                     self.predict(res)
 
-                    self.current_image2 = Image.fromarray(res)
-                    imgtk2 = ImageTk.PhotoImage(image=self.current_image2)
-                    self.panel2.imgtk = imgtk2
-                    self.panel2.config(image=imgtk2)
+                    # Overlay skeleton ON CAMERA (sticks to your hand)
+                    self._draw_skeleton_on_frame(cv2image_copy, self.pts, (x1, y1))
 
-                    self.panel3.config(text=self.current_symbol,
-                                       font=("Times New Roman", 30))
+                    # Update UI labels/buttons
+                    self.panel3.config(text=self.current_symbol, font=("Times New Roman", 22, "bold"))
 
-                    self.b1.config(text=self.word1, font=("Times New Roman", 20),
-                                   wraplength=825, command=self.action1)
-                    self.b2.config(text=self.word2, font=("Times New Roman", 20),
-                                   wraplength=825, command=self.action2)
-                    self.b3.config(text=self.word3, font=("Times New Roman", 20),
-                                   wraplength=825, command=self.action3)
-                    self.b4.config(text=self.word4, font=("Times New Roman", 20),
-                                   wraplength=825, command=self.action4)
+                    self.b1.config(text=self.word1, font=("Times New Roman", 16),
+                                   wraplength=200, command=self.action1)
+                    self.b2.config(text=self.word2, font=("Times New Roman", 16),
+                                   wraplength=200, command=self.action2)
+                    self.b3.config(text=self.word3, font=("Times New Roman", 16),
+                                   wraplength=200, command=self.action3)
+                    self.b4.config(text=self.word4, font=("Times New Roman", 16),
+                                   wraplength=200, command=self.action4)
 
-            self.panel5.config(text=self.str,
-                               font=("Times New Roman", 30),
-                               wraplength=1025)
+            # --------- DISPLAY: crop the camera into a square ----------
+            square_bgr = self._center_crop_square(cv2image_copy)
+            cv2image_rgb = cv2.cvtColor(square_bgr, cv2.COLOR_BGR2RGB)
+            self.current_image = Image.fromarray(cv2image_rgb)
+            imgtk = ImageTk.PhotoImage(image=self.current_image)
+            self.panel.imgtk = imgtk
+            self.panel.config(image=imgtk)
+            # ----------------------------------------------------------
+
+            self.panel5.config(text=self.str, font=("Times New Roman", 18), wraplength=520)
+
         except Exception:
             print("==", traceback.format_exc())
         finally:
@@ -316,10 +419,6 @@ class Application:
         idx_word = self.str.find(self.word, idx_space)
         self.str = self.str[:idx_word] + self.word4.upper()
 
-    def speak_fun(self):
-        self.speak_engine.say(self.str)
-        self.speak_engine.runAndWait()
-
     def clear_fun(self):
         self.str = " "
         self.word1 = " "
@@ -341,233 +440,193 @@ class Application:
         prob[ch3] = 0
 
         # -------------------------
-        # BEGIN: original giant conditional logic
+        # BEGIN: original giant conditional logic (kept as-is from your provided code)
         # -------------------------
 
         pl = [ch1, ch2]
 
-        # condition for [Aemnst]
         l = [[5, 2], [5, 3], [3, 5], [3, 6], [3, 0], [3, 2], [6, 4], [6, 1], [6, 2], [6, 6], [6, 7], [6, 0], [6, 5],
              [4, 1], [1, 0], [1, 1], [6, 3], [1, 6], [5, 6], [5, 1], [4, 5], [1, 4], [1, 5], [2, 0], [2, 6], [4, 6],
              [1, 0], [5, 7], [1, 6], [6, 1], [7, 6], [2, 5], [7, 1], [5, 4], [7, 0], [7, 5], [7, 2]]
         if pl in l:
-            if (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][
-                1]):
+            if (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]):
                 ch1 = 0
 
-        # condition for [o][s]
         l = [[2, 2], [2, 1]]
         if pl in l:
             if (self.pts[5][0] < self.pts[4][0]):
                 ch1 = 0
 
-        # condition for [c0][aemnst]
         l = [[0, 0], [0, 6], [0, 2], [0, 5], [0, 1], [0, 7], [5, 2], [7, 6], [7, 1]]
         pl = [ch1, ch2]
         if pl in l:
-            if (self.pts[0][0] > self.pts[8][0] and self.pts[0][0] > self.pts[4][0] and self.pts[0][0] > self.pts[12][0] and self.pts[0][0] > self.pts[16][
-                0] and self.pts[0][0] > self.pts[20][0]) and self.pts[5][0] > self.pts[4][0]:
+            if (self.pts[0][0] > self.pts[8][0] and self.pts[0][0] > self.pts[4][0] and self.pts[0][0] > self.pts[12][0] and self.pts[0][0] > self.pts[16][0] and self.pts[0][0] > self.pts[20][0]) and self.pts[5][0] > self.pts[4][0]:
                 ch1 = 2
 
-        # condition for [c0][aemnst]
         l = [[6, 0], [6, 6], [6, 2]]
         pl = [ch1, ch2]
         if pl in l:
             if self.distance(self.pts[8], self.pts[16]) < 52:
                 ch1 = 2
 
-        # condition for [gh][bdfikruvw]
         l = [[1, 4], [1, 5], [1, 6], [1, 3], [1, 0]]
         pl = [ch1, ch2]
-
         if pl in l:
-            if self.pts[6][1] > self.pts[8][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1] and self.pts[0][0] < self.pts[8][
-                0] and self.pts[0][0] < self.pts[12][0] and self.pts[0][0] < self.pts[16][0] and self.pts[0][0] < self.pts[20][0]:
+            if self.pts[6][1] > self.pts[8][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1] and self.pts[0][0] < self.pts[8][0] and self.pts[0][0] < self.pts[12][0] and self.pts[0][0] < self.pts[16][0] and self.pts[0][0] < self.pts[20][0]:
                 ch1 = 3
 
-        # con for [gh][l]
         l = [[4, 6], [4, 1], [4, 5], [4, 3], [4, 7]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[4][0] > self.pts[0][0]:
                 ch1 = 3
 
-        # con for [gh][pqz]
         l = [[5, 3], [5, 0], [5, 7], [5, 4], [5, 2], [5, 1], [5, 5]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[2][1] + 15 < self.pts[16][1]:
                 ch1 = 3
 
-        # con for [l][x]
         l = [[6, 4], [6, 1], [6, 2]]
         pl = [ch1, ch2]
         if pl in l:
             if self.distance(self.pts[4], self.pts[11]) > 55:
                 ch1 = 4
 
-        # con for [l][d]
         l = [[1, 4], [1, 6], [1, 1]]
         pl = [ch1, ch2]
         if pl in l:
             if (self.distance(self.pts[4], self.pts[11]) > 50) and (
-                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] <
-                    self.pts[20][1]):
+                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]):
                 ch1 = 4
 
-        # con for [l][gh]
         l = [[3, 6], [3, 4]]
         pl = [ch1, ch2]
         if pl in l:
             if (self.pts[4][0] < self.pts[0][0]):
                 ch1 = 4
 
-        # con for [l][c0]
         l = [[2, 2], [2, 5], [2, 4]]
         pl = [ch1, ch2]
         if pl in l:
             if (self.pts[1][0] < self.pts[12][0]):
                 ch1 = 4
 
-        # con for [l][c0] (duplicate block kept as in original)
         l = [[2, 2], [2, 5], [2, 4]]
         pl = [ch1, ch2]
         if pl in l:
             if (self.pts[1][0] < self.pts[12][0]):
                 ch1 = 4
 
-        # con for [gh][z]
         l = [[3, 6], [3, 5], [3, 4]]
         pl = [ch1, ch2]
         if pl in l:
-            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][
-                1]) and self.pts[4][1] > self.pts[10][1]:
+            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]) and self.pts[4][1] > self.pts[10][1]:
                 ch1 = 5
 
-        # con for [gh][pq]
         l = [[3, 2], [3, 1], [3, 6]]
         pl = [ch1, ch2]
         if pl in l:
-            if self.pts[4][1] + 17 > self.pts[8][1] and self.pts[4][1] + 17 > self.pts[12][1] and self.pts[4][1] + 17 > self.pts[16][1] and self.pts[4][
-                1] + 17 > self.pts[20][1]:
+            if self.pts[4][1] + 17 > self.pts[8][1] and self.pts[4][1] + 17 > self.pts[12][1] and self.pts[4][1] + 17 > self.pts[16][1] and self.pts[4][1] + 17 > self.pts[20][1]:
                 ch1 = 5
 
-        # con for [l][pqz]
         l = [[4, 4], [4, 5], [4, 2], [7, 5], [7, 6], [7, 0]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[4][0] > self.pts[0][0]:
                 ch1 = 5
 
-        # con for [pqz][aemnst]
         l = [[0, 2], [0, 6], [0, 1], [0, 5], [0, 0], [0, 7], [0, 4], [0, 3], [2, 7]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[0][0] < self.pts[8][0] and self.pts[0][0] < self.pts[12][0] and self.pts[0][0] < self.pts[16][0] and self.pts[0][0] < self.pts[20][0]:
                 ch1 = 5
 
-        # con for [pqz][yj]
         l = [[5, 7], [5, 2], [5, 6]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[3][0] < self.pts[0][0]:
                 ch1 = 7
 
-        # con for [l][yj]
         l = [[4, 6], [4, 2], [4, 4], [4, 1], [4, 5], [4, 7]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[6][1] < self.pts[8][1]:
                 ch1 = 7
 
-        # con for [x][yj]
         l = [[6, 7], [0, 7], [0, 1], [0, 0], [6, 4], [6, 6], [6, 5], [6, 1]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[18][1] > self.pts[20][1]:
                 ch1 = 7
 
-        # condition for [x][aemnst]
         l = [[0, 4], [0, 2], [0, 3], [0, 1], [0, 6]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[5][0] > self.pts[16][0]:
                 ch1 = 6
 
-        # condition for [yj][x]
         l = [[7, 2]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[18][1] < self.pts[20][1] and self.pts[8][1] < self.pts[10][1]:
                 ch1 = 6
 
-        # condition for [c0][x]
         l = [[2, 1], [2, 2], [2, 6], [2, 7], [2, 0]]
         pl = [ch1, ch2]
         if pl in l:
             if self.distance(self.pts[8], self.pts[16]) > 50:
                 ch1 = 6
 
-        # con for [l][x]
         l = [[4, 6], [4, 2], [4, 1], [4, 4]]
         pl = [ch1, ch2]
         if pl in l:
             if self.distance(self.pts[4], self.pts[11]) < 60:
                 ch1 = 6
 
-        # con for [x][d]
         l = [[1, 4], [1, 6], [1, 0], [1, 2]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[5][0] - self.pts[4][0] - 15 > 0:
                 ch1 = 6
 
-        # con for [b][pqz]
         l = [[5, 0], [5, 1], [5, 4], [5, 5], [5, 6], [6, 1], [7, 6], [0, 2], [7, 1], [7, 4], [6, 6], [7, 2], [5, 0],
              [6, 3], [6, 4], [7, 5], [7, 2]]
         pl = [ch1, ch2]
         if pl in l:
-            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] > self.pts[20][
-                1]):
+            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] > self.pts[20][1]):
                 ch1 = 1
 
-        # con for [f][pqz]
         l = [[6, 1], [6, 0], [0, 3], [6, 4], [2, 2], [0, 6], [6, 2], [7, 6], [4, 6], [4, 1], [4, 2], [0, 2], [7, 1],
              [7, 4], [6, 6], [7, 2], [7, 5], [7, 2]]
         pl = [ch1, ch2]
         if pl in l:
-            if (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and
-                    self.pts[18][1] > self.pts[20][1]):
+            if (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] > self.pts[20][1]):
                 ch1 = 1
 
         l = [[6, 1], [6, 0], [4, 2], [4, 1], [4, 6], [4, 4]]
         pl = [ch1, ch2]
         if pl in l:
-            if (self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and
-                    self.pts[18][1] > self.pts[20][1]):
+            if (self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] > self.pts[20][1]):
                 ch1 = 1
 
-        # con for [d][pqz]
         l = [[5, 0], [3, 4], [3, 0], [3, 1], [3, 5], [5, 5], [5, 4], [5, 1], [7, 6]]
         pl = [ch1, ch2]
         if pl in l:
-            if ((self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and
-                 self.pts[18][1] < self.pts[20][1]) and (self.pts[2][0] < self.pts[0][0]) and self.pts[4][1] > self.pts[14][1]):
+            if ((self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]) and (self.pts[2][0] < self.pts[0][0]) and self.pts[4][1] > self.pts[14][1]):
                 ch1 = 1
 
         l = [[4, 1], [4, 2], [4, 4]]
         pl = [ch1, ch2]
         if pl in l:
             if (self.distance(self.pts[4], self.pts[11]) < 50) and (
-                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] <
-                    self.pts[20][1]):
+                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]):
                 ch1 = 1
 
         l = [[3, 4], [3, 0], [3, 1], [3, 5], [3, 6]]
         pl = [ch1, ch2]
         if pl in l:
-            if ((self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and
-                 self.pts[18][1] < self.pts[20][1]) and (self.pts[2][0] < self.pts[0][0]) and self.pts[14][1] < self.pts[4][1]):
+            if ((self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]) and (self.pts[2][0] < self.pts[0][0]) and self.pts[14][1] < self.pts[4][1]):
                 ch1 = 1
 
         l = [[6, 6], [6, 4], [6, 1], [6, 2]]
@@ -576,58 +635,45 @@ class Application:
             if self.pts[5][0] - self.pts[4][0] - 15 < 0:
                 ch1 = 1
 
-        # con for [i][pqz]
         l = [[5, 4], [5, 5], [5, 1], [0, 3], [0, 7], [5, 0], [0, 2], [6, 2], [7, 5], [7, 1], [7, 6], [7, 7]]
         pl = [ch1, ch2]
         if pl in l:
-            if ((self.pts[6][1] < self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and
-                 self.pts[18][1] > self.pts[20][1])):
+            if ((self.pts[6][1] < self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] > self.pts[20][1])):
                 ch1 = 1
 
-        # con for [yj][bfdi]
         l = [[1, 5], [1, 7], [1, 1], [1, 6], [1, 3], [1, 0]]
         pl = [ch1, ch2]
         if pl in l:
             if (self.pts[4][0] < self.pts[5][0] + 15) and (
-            (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and
-             self.pts[18][1] > self.pts[20][1])):
+                    (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] > self.pts[20][1])):
                 ch1 = 7
 
-        # con for [uvr]
         l = [[5, 5], [5, 0], [5, 4], [5, 1], [4, 6], [4, 1], [7, 6], [3, 0], [3, 5]]
         pl = [ch1, ch2]
         if pl in l:
-            if ((self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and
-                 self.pts[18][1] < self.pts[20][1])) and self.pts[4][1] > self.pts[14][1]:
+            if ((self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1])) and self.pts[4][1] > self.pts[14][1]:
                 ch1 = 1
 
-        # con for [w]
         fg = 13
         l = [[3, 5], [3, 0], [3, 6], [5, 1], [4, 1], [2, 0], [5, 0], [5, 5]]
         pl = [ch1, ch2]
         if pl in l:
-            if not (self.pts[0][0] + fg < self.pts[8][0] and self.pts[0][0] + fg < self.pts[12][0] and self.pts[0][0] + fg < self.pts[16][0] and
-                    self.pts[0][0] + fg < self.pts[20][0]) and not (
-                    self.pts[0][0] > self.pts[8][0] and self.pts[0][0] > self.pts[12][0] and self.pts[0][0] > self.pts[16][0] and self.pts[0][0] > self.pts[20][
-                0]) and self.distance(self.pts[4], self.pts[11]) < 50:
+            if not (self.pts[0][0] + fg < self.pts[8][0] and self.pts[0][0] + fg < self.pts[12][0] and self.pts[0][0] + fg < self.pts[16][0] and self.pts[0][0] + fg < self.pts[20][0]) and not (
+                    self.pts[0][0] > self.pts[8][0] and self.pts[0][0] > self.pts[12][0] and self.pts[0][0] > self.pts[16][0] and self.pts[0][0] > self.pts[20][0]) and self.distance(self.pts[4], self.pts[11]) < 50:
                 ch1 = 1
 
-        # con for [w]
         l = [[5, 0], [5, 5], [0, 1]]
         pl = [ch1, ch2]
         if pl in l:
             if self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1]:
                 ch1 = 1
 
-        # -------------------------condn for 8 groups ends-------------------------
-
-        # -------------------------condn for subgroups starts----------------------
+        # subgroup mapping
         if ch1 == 0:
             ch1 = 'S'
             if self.pts[4][0] < self.pts[6][0] and self.pts[4][0] < self.pts[10][0] and self.pts[4][0] < self.pts[14][0] and self.pts[4][0] < self.pts[18][0]:
                 ch1 = 'A'
-            if self.pts[4][0] > self.pts[6][0] and self.pts[4][0] < self.pts[10][0] and self.pts[4][0] < self.pts[14][0] and self.pts[4][0] < self.pts[18][
-                0] and self.pts[4][1] < self.pts[14][1] and self.pts[4][1] < self.pts[18][1]:
+            if self.pts[4][0] > self.pts[6][0] and self.pts[4][0] < self.pts[10][0] and self.pts[4][0] < self.pts[14][0] and self.pts[4][0] < self.pts[18][0] and self.pts[4][1] < self.pts[14][1] and self.pts[4][1] < self.pts[18][1]:
                 ch1 = 'T'
             if self.pts[4][1] > self.pts[8][1] and self.pts[4][1] > self.pts[12][1] and self.pts[4][1] > self.pts[16][1] and self.pts[4][1] > self.pts[20][1]:
                 ch1 = 'E'
@@ -656,7 +702,6 @@ class Application:
 
         if ch1 == 4:
             ch1 = 'L'
-
         if ch1 == 6:
             ch1 = 'X'
 
@@ -670,35 +715,26 @@ class Application:
                 ch1 = 'P'
 
         if ch1 == 1:
-            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] > self.pts[20][
-                1]):
+            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] > self.pts[20][1]):
                 ch1 = 'B'
-            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][
-                1]):
+            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]):
                 ch1 = 'D'
-            if (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] > self.pts[20][
-                1]):
+            if (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] > self.pts[20][1]):
                 ch1 = 'F'
-            if (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] > self.pts[20][
-                1]):
+            if (self.pts[6][1] < self.pts[8][1] and self.pts[10][1] < self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] > self.pts[20][1]):
                 ch1 = 'I'
-            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] < self.pts[20][
-                1]):
+            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] > self.pts[16][1] and self.pts[18][1] < self.pts[20][1]):
                 ch1 = 'W'
-            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][
-                1]) and self.pts[4][1] < self.pts[9][1]:
+            if (self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]) and self.pts[4][1] < self.pts[9][1]:
                 ch1 = 'K'
             if ((self.distance(self.pts[8], self.pts[12]) - self.distance(self.pts[6], self.pts[10])) < 8) and (
-                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] <
-                    self.pts[20][1]):
+                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]):
                 ch1 = 'U'
             if ((self.distance(self.pts[8], self.pts[12]) - self.distance(self.pts[6], self.pts[10])) >= 8) and (
-                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] <
-                    self.pts[20][1]) and (self.pts[4][1] > self.pts[9][1]):
+                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]) and (self.pts[4][1] > self.pts[9][1]):
                 ch1 = 'V'
             if (self.pts[8][0] > self.pts[12][0]) and (
-                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] <
-                    self.pts[20][1]):
+                    self.pts[6][1] > self.pts[8][1] and self.pts[10][1] > self.pts[12][1] and self.pts[14][1] < self.pts[16][1] and self.pts[18][1] < self.pts[20][1]):
                 ch1 = 'R'
 
         if ch1 == 1 or ch1 == 'E' or ch1 == 'S' or ch1 == 'X' or ch1 == 'Y' or ch1 == 'B':

@@ -10,7 +10,7 @@ import traceback
 
 #model = load_model('C:\\Users\\devansh raval\\PycharmProjects\\pythonProject\\cnn9.h5')
 
-capture = cv2.VideoCapture(0)
+capture = cv2.VideoCapture(0, cv2.CAP_AVFOUNDATION)
 
 hd = HandDetector(maxHands=1)
 hd2 = HandDetector(maxHands=1)
