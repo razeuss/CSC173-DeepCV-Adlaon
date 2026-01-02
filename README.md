@@ -337,7 +337,8 @@ recommended and supported by the project workflow:
 ### Demo
 ![Demo GIF](assets/demo.gif)
 
-https://drive.google.com/file/d/1j_niJfx06tPhftEI67eGRV-QCRzPSco3/view?usp=drive_link
+### Presentation
+
 
 ---
 
