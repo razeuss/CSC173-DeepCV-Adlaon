@@ -431,14 +431,14 @@ Typical dependencies include:
 2. **Run the application:** open `asl.ipynb` and run cells top-to-bottom. The final cell launches Tkinter.
 
 ## References
-[1] Fierro Radilla, A.N., Perez-Daniel, K.R. "Siamese Convolutional Neural Network for ASL Alphabet Recognition," *Computacion y Sistemas*, vol. 24, no. 3, 2020. DOI: 10.13053/CYS-24-3-3481.
-[2] Kozyra, K., Trzyniec, K., Popardowski, E., Stachurska, M. "Application for Recognizing Sign Language Gestures Based on an Artificial Neural Network," *Sensors*, vol. 22, no. 24, 9864, 2022. DOI: 10.3390/s22249864.
-[3] Ojha, A., Pandey, A., Maurya, S., Thakur, A., Dayananda, P. "Sign Language to Text and Speech Translation in Real Time Using Convolutional Neural Network," *International Journal of Engineering Research & Technology (IJERT)*, NCAIT, vol. 8, issue 15, 2020. DOI: 10.17577/IJERTCONV8IS15042.
-[4] Nahapetyan, V.E. "ASL Fingerspelling Recognition," *Discrete and Continuous Models and Applied Computational Science*, no. 2, pp. 105-113, 2013.
-[5] Patil, V.K., Pawar, V.R., Patil, A., Bairagi, V. "Sign language emotion and alphabet recognition with hand gestures using convolution neural network," *IAES International Journal of Artificial Intelligence (IJ-AI)*, vol. 14, no. 2, pp. 954-962, 2025. DOI: 10.11591/ijai.v14.i2.pp954-962.
-[6] Rastgoo, R., Kiani, K., Escalera, S. "Sign Language Recognition: A Deep Survey," *Expert Systems with Applications*, vol. 164, 113794, 2021. DOI: 10.1016/j.eswa.2020.113794.
-[7] Papastratis, I., Chatzikonstantinou, C., Konstantinidis, D., Dimitropoulos, K., Daras, P. "Artificial Intelligence Technologies for Sign Language," *Sensors*, vol. 21, no. 17, 5843, 2021. DOI: 10.3390/s21175843.
-[8] Adaloglou, N., Chatzis, T., Papastratis, I., Stergioulas, A., Papadopoulos, G.T., Zacharopoulou, V., Xydopoulos, G.J., Atzakas, K., Papazachariou, D., Daras, P. "A Comprehensive Study on Deep Learning-Based Methods for Sign Language Recognition," *IEEE Transactions on Multimedia*, vol. 24, pp. 1750-1762, 2022. DOI: 10.1109/TMM.2021.3070438.
-[9] Jiang, X., Satapathy, S.C., Yang, L., et al. "A Survey on Artificial Intelligence in Chinese Sign Language Recognition," *Arabian Journal for Science and Engineering*, vol. 45, pp. 9859-9894, 2020. DOI: 10.1007/s13369-020-04758-2.
-[10] Kaggle. "American Sign Language Alphabet Dataset (grassknoted)." Available: https://www.kaggle.com/datasets/grassknoted/asl-alphabet
-
+## References
+[1] Fierro Radilla, A.N., Perez-Daniel, K.R. "Siamese Convolutional Neural Network for ASL Alphabet Recognition," *Computacion y Sistemas*, vol. 24, no. 3, 2020. DOI: 10.13053/CYS-24-3-3481.<br>
+[2] Kozyra, K., Trzyniec, K., Popardowski, E., Stachurska, M. "Application for Recognizing Sign Language Gestures Based on an Artificial Neural Network," *Sensors*, vol. 22, no. 24, 9864, 2022. DOI: 10.3390/s22249864.<br>
+[3] Ojha, A., Pandey, A., Maurya, S., Thakur, A., Dayananda, P. "Sign Language to Text and Speech Translation in Real Time Using Convolutional Neural Network," *International Journal of Engineering Research & Technology (IJERT)*, NCAIT, vol. 8, issue 15, 2020. DOI: 10.17577/IJERTCONV8IS15042.<br>
+[4] Nahapetyan, V.E. "ASL Fingerspelling Recognition," *Discrete and Continuous Models and Applied Computational Science*, no. 2, pp. 105-113, 2013.<br>
+[5] Patil, V.K., Pawar, V.R., Patil, A., Bairagi, V. "Sign language emotion and alphabet recognition with hand gestures using convolution neural network," *IAES International Journal of Artificial Intelligence (IJ-AI)*, vol. 14, no. 2, pp. 954-962, 2025. DOI: 10.11591/ijai.v14.i2.pp954-962.<br>
+[6] Rastgoo, R., Kiani, K., Escalera, S. "Sign Language Recognition: A Deep Survey," *Expert Systems with Applications*, vol. 164, 113794, 2021. DOI: 10.1016/j.eswa.2020.113794.<br>
+[7] Papastratis, I., Chatzikonstantinou, C., Konstantinidis, D., Dimitropoulos, K., Daras, P. "Artificial Intelligence Technologies for Sign Language," *Sensors*, vol. 21, no. 17, 5843, 2021. DOI: 10.3390/s21175843.<br>
+[8] Adaloglou, N., Chatzis, T., Papastratis, I., Stergioulas, A., Papadopoulos, G.T., Zacharopoulou, V., Xydopoulos, G.J., Atzakas, K., Papazachariou, D., Daras, P. "A Comprehensive Study on Deep Learning-Based Methods for Sign Language Recognition," *IEEE Transactions on Multimedia*, vol. 24, pp. 1750-1762, 2022. DOI: 10.1109/TMM.2021.3070438.<br>
+[9] Jiang, X., Satapathy, S.C., Yang, L., et al. "A Survey on Artificial Intelligence in Chinese Sign Language Recognition," *Arabian Journal for Science and Engineering*, vol. 45, pp. 9859-9894, 2020. DOI: 10.1007/s13369-020-04758-2.<br>
+[10] Kaggle. "American Sign Language Alphabet Dataset (grassknoted)." Available: https://www.kaggle.com/datasets/grassknoted/asl-alphabet<br>
