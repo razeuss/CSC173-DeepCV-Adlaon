@@ -335,7 +335,7 @@ recommended and supported by the project workflow:
 > In a deployment-oriented system, stability and latency are often as important as accuracy.
 
 ### Demo
-![Demo GIF](assets/demo.gif)
+![Demo gif](https://github.com/user-attachments/assets/ed67220f-4436-4d29-94b5-db30a44fae8e)
 
 ### Presentation
 
