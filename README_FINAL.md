@@ -244,34 +244,34 @@ but aligned to this repository’s CNN + hand tracking design.
 ### System Architecture Diagram
 ```mermaid
 flowchart TB
-  subgraph UI[UI Layer (asl.ipynb)]
+  subgraph UI[UI Layer - asl.ipynb]
     U0[Tkinter Window]
     U1[Live Camera Feed]
     U2[Predicted Character]
     U3[Sentence Builder]
-    U4[Suggestion Buttons (optional)]
+    U4[Suggestion Buttons - optional]
   end
 
-  subgraph CV[CV Layer (OpenCV + cvzone/MediaPipe)]
+  subgraph CV[CV Layer - OpenCV and cvzone MediaPipe]
     C1[OpenCV VideoCapture]
     C2[Hand Detection]
-    C3[Hand Landmarks (21 keypoints)]
-    C4[ROI Crop + Padding]
+    C3[Hand Landmarks - 21 keypoints]
+    C4[ROI Crop plus Padding]
     C5[Standardize Input to Fixed Size]
   end
 
-  subgraph ML[ML Layer (TensorFlow/Keras)]
-    M1[CNN Model (.h5)]
+  subgraph ML[ML Layer - TensorFlow Keras]
+    M1[CNN Model - .h5]
     M2[Softmax Probabilities]
-    M3[Landmark-Aware Disambiguation Rules]
-    M4[Final A–Z Output]
+    M3[Landmark Aware Rules]
+    M4[Final A to Z Output]
   end
 
-  subgraph TRAIN[Training Layer (train.ipynb)]
+  subgraph TRAIN[Training Layer - train.ipynb]
     T1[Kaggle ASL Alphabet Dataset]
-    T2[Preprocessing + Label Mapping]
+    T2[Preprocessing and Label Mapping]
     T3[CNN Training]
-    T4[Export Model to models/]
+    T4[Export Model to models folder]
   end
 
   C1 --> C2 --> C3 --> C4 --> C5 --> M1 --> M2 --> M3 --> M4 --> U2 --> U3
@@ -283,6 +283,16 @@ flowchart TB
 
   T1 --> T2 --> T3 --> T4 --> M1
   C3 --> M3
+```
+### End-to-End Pipeline (Operational View)
+```mermaid
+flowchart LR
+A[Webcam Frame] --> B[Hand Detection and Landmarks]
+B --> C[ROI Crop and Input Standardization]
+C --> D[CNN Prediction]
+D --> E[Predicted Character]
+E --> F[Sentence Builder]
+F --> G[Tkinter UI Output]
 ```
 
 ### Training Procedure (`train.ipynb`)
